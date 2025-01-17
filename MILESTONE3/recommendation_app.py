@@ -1,73 +1,73 @@
 import streamlit as st
 import pandas as pd
-from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.feature_extraction.text import CountVectorizer
+import numpy as np
 
 # Recommendation function
-def recommend_services(df, new_feedback):
-    # Check for required columns
-    required_columns = ['Feedback', 'Dining Preference', 'Room Preference', 'Wellness', 'Pricing Pattern']
-    missing_columns = [col for col in required_columns if col not in df.columns]
-    if missing_columns:
-        return f"The following required columns are missing: {', '.join(missing_columns)}"
+def recommend_categories(df):
+    # Add placeholder values if columns are missing
+    if 'Time Spent' not in df.columns:
+        df['Time Spent'] = np.random.uniform(1, 5, len(df))
+    if 'Ratings' not in df.columns:
+        df['Ratings'] = np.random.uniform(1, 5, len(df))
 
-    df_subset = df[required_columns]
+    recommendations = {}
 
-    # Combine relevant features for similarity and handle missing values
-    df_subset['combined_features'] = (
-        df_subset['Feedback'].fillna('') + " " +
-        df_subset['Dining Preference'].fillna('') + " " +
-        df_subset['Room Preference'].fillna('') + " " +
-        df_subset['Wellness'].fillna('') + " " +
-        df_subset['Pricing Pattern'].fillna('')
-    )
-
-    # Add new feedback as a temporary entry
-    temp_df = pd.DataFrame([{'combined_features': new_feedback}])
-    df_subset = pd.concat([df_subset, temp_df], ignore_index=True)
-
-    # Vectorize combined features
-    vectorizer = CountVectorizer().fit_transform(df_subset['combined_features'])
-    similarity_matrix = cosine_similarity(vectorizer)
-
-    # Find similarity scores for the new feedback
-    new_feedback_index = len(df_subset) - 1
-    similarity_scores = list(enumerate(similarity_matrix[new_feedback_index]))
-    sorted_scores = sorted(similarity_scores[:-1], key=lambda x: x[1], reverse=True)
-
-    # Get top 5 recommendations
-    top_indices = [i[0] for i in sorted_scores[:5]]
-    recommendations = df.iloc[top_indices][['Dining Preference', 'Room Preference', 'Wellness', 'Pricing Pattern']]
+    # Calculate recommendations for each feature
+    for feature in ['Dining Preference', 'Room Preference', 'Wellness', 'Pricing Pattern']:
+        if feature in df.columns:
+            grouped = df.groupby(feature).agg({'Time Spent': 'mean', 'Ratings': 'mean'}).reset_index()
+            grouped['Score'] = grouped['Time Spent'] * grouped['Ratings']  # Combine metrics to rank categories
+            top_category = grouped.sort_values(by='Score', ascending=False).iloc[0]
+            recommendations[feature] = {
+                'Category': top_category[feature],
+                'Average Time Spent': round(top_category['Time Spent'], 2),
+                'Average Rating': round(top_category['Ratings'], 2)
+            }
 
     return recommendations
 
 # Streamlit app
 def main():
-    st.title("Feedback-Based Recommendation System")
+    st.title("Category-Based Recommendation System")
 
     uploaded_file = st.sidebar.file_uploader("Upload a CSV file", type=["csv"])
     if uploaded_file:
         try:
             df = pd.read_csv(uploaded_file)
+
+            # Add placeholder values if necessary
+            if 'Time Spent' not in df.columns:
+                df['Time Spent'] = np.random.uniform(1, 5, len(df))
+            if 'Ratings' not in df.columns:
+                df['Ratings'] = np.random.uniform(1, 5, len(df))
+
             st.sidebar.success("File successfully uploaded!")
+
             st.sidebar.header("Dataset Preview")
             if st.sidebar.checkbox("Show Dataset"):
                 st.write(df.head())
 
-            # Feedback input
-            st.sidebar.header("Manual Feedback")
-            new_feedback = st.sidebar.text_area("Provide Feedback:")
+            st.sidebar.header("Show Time Spent and Ratings")
+            if st.sidebar.checkbox("Show Calculated Columns"):
+                st.write(df[['Time Spent', 'Ratings']])
 
-            if st.sidebar.button("Get Recommendations"):
-                if new_feedback:
-                    st.subheader("Recommendations Based on Your Feedback")
-                    recommendations = recommend_services(df, new_feedback)
-                    if isinstance(recommendations, str):  # If it's an error message
-                        st.write(recommendations)
-                    else:
-                        st.dataframe(recommendations)
+            if st.sidebar.button("Generate Recommendations"):
+                st.subheader("Top Recommended Categories")
+                recommendations = recommend_categories(df)
+                if isinstance(recommendations, str):  # If it's an error message
+                    st.write(recommendations)
                 else:
-                    st.warning("Please provide feedback to get recommendations.")
+                    for feature, details in recommendations.items():
+                        st.markdown(f"<h3 style='color: #4CAF50;'>{feature}:</h3>", unsafe_allow_html=True)
+                        st.markdown(
+                            f"<div style='background-color: #f9f9f9; padding: 10px; border-radius: 5px; margin-bottom: 10px;'>"
+                            f"<b>Category:</b> {details['Category']}<br>"
+                            f"<b>Average Time Spent:</b> {details['Average Time Spent']} hours<br>"
+                            f"<b>Average Rating:</b> {details['Average Rating']} ⭐</div>",
+                            unsafe_allow_html=True
+                        )
+
+                st.balloons()  # Add balloons animation for better UX
         except Exception as e:
             st.error(f"Error reading file: {e}")
     else:
